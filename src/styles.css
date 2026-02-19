@@ -1,0 +1,115 @@
+body {
+  margin: 0;
+  background-color: #F4F8F9;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #1F2933;
+}
+
+.container {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+h1 {
+  text-align: center;
+  color: #2B7A78;
+  font-size: 32px;
+  margin-bottom: 20px;
+}
+
+h3 {
+  margin-top: 30px;
+  font-size: 22px;
+  color: #2B7A78;
+}
+
+button {
+  padding: 12px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 10px;
+  transition: 0.2s ease;
+}
+
+.primary-btn {
+  background-color: #2B7A78;
+  color: white;
+}
+
+.primary-btn:hover {
+  background-color: #256c6a;
+}
+
+.delete-btn {
+  background-color: #E57373;
+  color: white;
+}
+
+input, select {
+  padding: 12px;
+  font-size: 18px;
+  width: 100%;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.date-picker {
+  font-size: 20px;
+  padding: 10px;
+  margin-bottom: 20px;
+}
+
+.slot-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.slot-table td {
+  border: 1px solid #ccc;
+  padding: 15px;
+  text-align: center;
+  font-size: 18px;
+  min-width: 100px;
+  transition: 0.2s ease;
+}
+
+.slot-available {
+  background-color: #A5D6A7;
+  cursor: pointer;
+}
+
+.slot-selected {
+  background-color: #4A90E2;
+  color: white;
+}
+
+.slot-full {
+  background-color: #E57373;
+  color: white;
+  cursor: not-allowed;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.admin-table th {
+  background-color: #2B7A78;
+  color: white;
+  padding: 10px;
+}
+
+.admin-table td {
+  padding: 10px;
+  border: 1px solid #ccc;
+}

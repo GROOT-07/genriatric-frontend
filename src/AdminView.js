@@ -3,14 +3,17 @@ import React, { useEffect, useState } from "react";
 function AdminView() {
   const [bookings, setBookings] = useState([]);
 
+  const BACKEND_URL = "https://your-backend.onrender.com";
+
   useEffect(() => {
-    fetch("http://localhost:5000/bookings")
+    fetch(`${BACKEND_URL}/book`)
       .then(res => res.json())
-      .then(data => setBookings(data));
+      .then(data => setBookings(data))
+      .catch(err => console.error(err));
   }, []);
 
   const exportCSV = () => {
-    window.location.href = "http://localhost:5000/export";
+    window.location.href = `${BACKEND_URL}/export`;
   };
 
   return (

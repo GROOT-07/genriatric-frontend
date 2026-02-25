@@ -1,122 +1,331 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
-const API = process.env.REACT_APP_API_URL;
-console.log("API BASE URL:", API);
+const API = process.env.REACT_APP_BACKEND_URL;
 
-function SlotBooking() {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
-  const [name, setName] = useState("");
-  const [age, setAge] = useState("");
-  const [phone, setPhone] = useState("");
-  const [bookedSlots, setBookedSlots] = useState([]);
-  const [message, setMessage] = useState("");
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SLOTS = ["9:00–10:00 AM", "10:00–11:00 AM", "11:00–12:00 PM", "12:00–1:00 PM"];
 
-  const timeSlots = [
-    "09:00 - 10:00",
-    "10:00 - 11:00",
-    "11:00 - 12:00",
-    "12:00 - 01:00",
-    "01:00 - 02:00",
-    "02:00 - 03:00",
-    "03:00 - 04:00"
-  ];
+function SlotBooking({ bookings, onBooked }) {
+  const [step, setStep] = useState(1); // 1=form, 2=slots, 3=confirm, 4=done
+  const [form, setForm] = useState({ name: "", age: "", phone: "" });
+  const [errors, setErrors] = useState({});
+  const [selectedSlots, setSelectedSlots] = useState([]);
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  // Fetch bookings on load
-  useEffect(() => {
-    fetch(`${API}/bookings`)
-      .then(res => res.json())
-      .then(data => setBookedSlots(data))
-      .catch(() => setBookedSlots([]));
-  }, []);
+  // Build taken slots set from bookings prop
+  const takenSlots = new Set(bookings.flatMap(b => b.slots || []));
 
-  const isSlotBooked = (d, t) => {
-    return bookedSlots.some(b => b.date === d && b.time === t);
+  // ── Validation ──────────────────────────────────────────────────────────────
+  const validateForm = () => {
+    const e = {};
+    if (!form.name.trim()) e.name = "Please enter your full name.";
+    const age = parseInt(form.age);
+    if (!form.age || isNaN(age) || age < 1 || age > 120)
+      e.age = "Please enter a valid age (1–120).";
+    const phone = form.phone.replace(/\D/g, "");
+    if (!form.phone.trim()) e.phone = "Please enter your phone number.";
+    else if (phone.length < 7 || phone.length > 15)
+      e.phone = "Phone must be 7–15 digits.";
+    return e;
   };
 
+  const handleFormNext = () => {
+    const e = validateForm();
+    if (Object.keys(e).length) { setErrors(e); return; }
+    setErrors({});
+    setStep(2);
+  };
+
+  // ── Slot toggle ─────────────────────────────────────────────────────────────
+  const toggleSlot = (key) => {
+    setSelectedSlots(prev =>
+      prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]
+    );
+  };
+
+  // ── Submit booking ──────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    setMessage("");
-
-    const res = await fetch(`${API}/book`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, time, name, age, phone })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setMessage(data.message || "Booking failed");
+    if (selectedSlots.length === 0) {
+      setSubmitError("Please select at least one slot.");
       return;
     }
+    setSubmitting(true);
+    setSubmitError("");
 
-    setMessage("✅ Slot booked successfully!");
+    try {
+      const res = await fetch(`${API}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          age: parseInt(form.age),
+          phone: form.phone.trim(),
+          slots: selectedSlots
+        })
+      });
 
-    // Refresh bookings
-    const updated = await fetch(`${API}/bookings`);
-    setBookedSlots(await updated.json());
+      const data = await res.json();
 
-    // Reset form
-    setDate("");
-    setTime("");
-    setName("");
-    setAge("");
-    setPhone("");
+      if (!res.ok) {
+        // Handle conflict (409) — some slots were just taken
+        if (res.status === 409 && data.conflicts) {
+          setSubmitError(
+            `These slots were just taken: ${data.conflicts.map(formatSlotKey).join(", ")}. Please re-select.`
+          );
+          setSelectedSlots(prev => prev.filter(s => !data.conflicts.includes(s)));
+        } else {
+          setSubmitError(data.message || "Booking failed. Please try again.");
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      await onBooked(); // refresh bookings in parent
+      setSubmitting(false);
+      setStep(4);
+
+    } catch (err) {
+      console.error(err);
+      setSubmitError("Cannot connect to server. Please check your connection.");
+      setSubmitting(false);
+    }
   };
 
+  // ── Reset ───────────────────────────────────────────────────────────────────
+  const reset = () => {
+    setStep(1);
+    setForm({ name: "", age: "", phone: "" });
+    setSelectedSlots([]);
+    setErrors({});
+    setSubmitError("");
+  };
+
+  // ── Step 4: Success ─────────────────────────────────────────────────────────
+  if (step === 4) {
+    return (
+      <div className="card">
+        <div className="success-screen" role="status" aria-live="polite">
+          <div className="checkmark" aria-hidden="true">✓</div>
+          <h2>Booking Confirmed!</h2>
+          <p>Thank you, <strong>{form.name}</strong>.</p>
+          <p>Your {selectedSlots.length} slot(s) have been reserved.</p>
+          <ul className="confirm-list" style={{ display: "inline-block", textAlign: "left", marginTop: 16 }}>
+            {selectedSlots.map(s => <li key={s}>{formatSlotKey(s)}</li>)}
+          </ul>
+          <div style={{ marginTop: 28 }}>
+            <button className="btn btn-primary" onClick={reset}>
+              Book Another Appointment
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: 30, maxWidth: 600, margin: "auto" }}>
-      <h2>Geriatric Daycare Slot Booking</h2>
+    <>
+      {/* Progress */}
+      <div className="step-progress" role="status" aria-live="polite">
+        Step {step} of 3 — {step === 1 ? "Your Details" : step === 2 ? "Choose Slots" : "Confirm"}
+      </div>
 
-      <label>Day</label>
-      <select value={date} onChange={e => setDate(e.target.value)}>
-        <option value="">Select Day</option>
-        <option>Mon</option>
-        <option>Tue</option>
-        <option>Wed</option>
-        <option>Thu</option>
-        <option>Fri</option>
-        <option>Sat</option>
-      </select>
+      {/* ── Step 1: Form ── */}
+      {step === 1 && (
+        <div className="card">
+          <h2 className="card-title">
+            <span className="step-badge">1</span> Your Details
+          </h2>
 
-      <br /><br />
+          <div className="form-grid">
+            <Field
+              id="name" label="Full Name *" type="text"
+              value={form.name} error={errors.name}
+              placeholder="e.g. Ramesh Sharma"
+              autoComplete="name"
+              onChange={v => setForm(f => ({ ...f, name: v }))}
+            />
+            <Field
+              id="age" label="Age *" type="number"
+              value={form.age} error={errors.age}
+              placeholder="e.g. 72"
+              onChange={v => setForm(f => ({ ...f, age: v }))}
+            />
+            <Field
+              id="phone" label="Phone Number *" type="tel"
+              value={form.phone} error={errors.phone}
+              placeholder="e.g. 9876543210"
+              autoComplete="tel"
+              hint="Include STD code if needed"
+              onChange={v => setForm(f => ({ ...f, phone: v }))}
+            />
+          </div>
 
-      <label>Time Slot</label>
-      <select value={time} onChange={e => setTime(e.target.value)}>
-        <option value="">Select Time</option>
-        {timeSlots.map(slot => (
-          <option
-            key={slot}
-            value={slot}
-            disabled={isSlotBooked(date, slot)}
-          >
-            {slot} {isSlotBooked(date, slot) ? "(Booked)" : ""}
-          </option>
-        ))}
-      </select>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleFormNext}>
+              Next: Choose Slots →
+            </button>
+          </div>
+        </div>
+      )}
 
-      <br /><br />
+      {/* ── Step 2: Timetable ── */}
+      {step === 2 && (
+        <div className="card">
+          <h2 className="card-title">
+            <span className="step-badge">2</span> Choose Your Slot(s)
+          </h2>
 
-      <label>Name</label>
-      <input value={name} onChange={e => setName(e.target.value)} />
+          {submitError && (
+            <div className="alert alert-warn" role="alert">⚠️ {submitError}</div>
+          )}
 
-      <br /><br />
+          <p className="slot-instruction">
+            Tap any <strong>green slot</strong> to select it. You can pick multiple.
+          </p>
 
-      <label>Age</label>
-      <input type="number" value={age} onChange={e => setAge(e.target.value)} />
+          <div className="timetable-wrap">
+            <table className="timetable" role="grid" aria-label="Appointment timetable">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  {DAYS.map(d => <th key={d} scope="col">{d.slice(0, 3)}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {SLOTS.map(slot => (
+                  <tr key={slot}>
+                    <td className="time-label">{slot}</td>
+                    {DAYS.map(day => {
+                      const key = `${day}|${slot}`;
+                      const taken = takenSlots.has(key);
+                      const selected = selectedSlots.includes(key);
+                      return (
+                        <td key={day} style={{ padding: "5px" }}>
+                          <button
+                            className={`slot-btn${selected ? " selected" : taken ? " taken" : " free"}`}
+                            onClick={() => !taken && toggleSlot(key)}
+                            disabled={taken}
+                            aria-pressed={selected}
+                            aria-label={`${day} ${slot} — ${taken ? "Fully booked" : selected ? "Selected, tap to deselect" : "Available"}`}
+                          >
+                            {taken ? "Booked" : selected ? "✓ Selected" : "Free"}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <br /><br />
+          {/* Legend */}
+          <div className="legend">
+            <span className="legend-item">
+              <span className="legend-dot free-dot"></span> Available
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot selected-dot"></span> Selected
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot taken-dot"></span> Booked
+            </span>
+          </div>
 
-      <label>Phone</label>
-      <input value={phone} onChange={e => setPhone(e.target.value)} />
+          {selectedSlots.length > 0 && (
+            <div className="alert alert-success" role="status" aria-live="polite">
+              ✓ {selectedSlots.length} slot{selectedSlots.length > 1 ? "s" : ""} selected
+            </div>
+          )}
 
-      <br /><br />
+          <div className="btn-row">
+            <button className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (selectedSlots.length === 0) {
+                  setSubmitError("Please select at least one slot.");
+                  return;
+                }
+                setSubmitError("");
+                setStep(3);
+              }}
+            >
+              Next: Confirm →
+            </button>
+          </div>
+        </div>
+      )}
 
-      <button onClick={handleSubmit}>Book Slot</button>
+      {/* ── Step 3: Confirm ── */}
+      {step === 3 && (
+        <div className="card">
+          <h2 className="card-title">
+            <span className="step-badge">3</span> Confirm Booking
+          </h2>
 
-      <p style={{ marginTop: 20, fontWeight: "bold" }}>{message}</p>
+          {submitError && (
+            <div className="alert alert-error" role="alert">⚠️ {submitError}</div>
+          )}
+
+          <div className="confirm-box">
+            <h3>Patient Details</h3>
+            <ul className="confirm-list">
+              <li>Name: <strong>{form.name}</strong></li>
+              <li>Age: <strong>{form.age}</strong></li>
+              <li>Phone: <strong>{form.phone}</strong></li>
+            </ul>
+          </div>
+
+          <div className="confirm-box">
+            <h3>Selected Slots ({selectedSlots.length})</h3>
+            <ul className="confirm-list">
+              {selectedSlots.map(s => <li key={s}>{formatSlotKey(s)}</li>)}
+            </ul>
+          </div>
+
+          <div className="btn-row">
+            <button className="btn btn-secondary" onClick={() => setStep(2)}>← Edit Slots</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={submitting}
+              aria-busy={submitting}
+            >
+              {submitting ? "Confirming..." : "✓ Confirm Booking"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Reusable Field ────────────────────────────────────────────────────────────
+function Field({ id, label, type, value, onChange, error, placeholder, hint, autoComplete }) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}-err` : hint ? `${id}-hint` : undefined}
+      />
+      {error && <span id={`${id}-err`} className="field-error" role="alert">⚠ {error}</span>}
+      {hint && !error && <span id={`${id}-hint`} className="field-hint">{hint}</span>}
     </div>
   );
+}
+
+function formatSlotKey(key) {
+  const [day, slot] = key.split("|");
+  return `${day} · ${slot}`;
 }
 
 export default SlotBooking;
